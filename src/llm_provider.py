@@ -3,9 +3,10 @@ LLM Provider abstraction layer with caching support for Claude and Gemini
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
+from datetime import timedelta
 import anthropic
 import google.generativeai as genai
 from loguru import logger
@@ -258,9 +259,9 @@ class GeminiProvider(BaseLLMProvider):
             
             # Extract usage (Gemini provides limited usage info)
             usage = {
-                "input_tokens": getattr(response, "prompt_token_count", 0),
-                "output_tokens": getattr(response, "candidates_token_count", 0),
-                "total_tokens": getattr(response, "total_token_count", 0)
+                "input_tokens": response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else 0,
+                "output_tokens": response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else 0,
+                "total_tokens": response.usage_metadata.total_token_count if hasattr(response, 'usage_metadata') else 0
             }
             
             cache_info = {
@@ -307,7 +308,7 @@ class GeminiProvider(BaseLLMProvider):
             cached_content = genai.caching.CachedContent.create(
                 model=self.model,
                 contents=[{"role": "user", "parts": [{"text": context}]}],
-                ttl=f"{ttl}s"
+                ttl=timedelta(seconds=ttl)
             )
             
             cache_name = cached_content.name

@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     
     # Gemini Settings
     gemini_model: str = Field(
-        default="gemini-1.5-pro-002",
+        default="gemini-2.0-flash-exp",
         description="Gemini model name"
     )
     gemini_max_tokens: int = Field(default=8192, ge=1, le=2000000)
