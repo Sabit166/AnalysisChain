@@ -33,7 +33,7 @@ def cli():
 @cli.command()
 @click.option(
     '--provider',
-    type=click.Choice(['claude', 'gemini'], case_sensitive=False),
+    type=click.Choice(['claude', 'gemini', 'groq'], case_sensitive=False),
     default=None,
     help='LLM provider (defaults to config)'
 )

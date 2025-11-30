@@ -9,6 +9,7 @@ from enum import Enum
 from datetime import timedelta
 import anthropic
 import google.generativeai as genai
+from groq import Groq
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -327,6 +328,109 @@ class GeminiProvider(BaseLLMProvider):
             raise
 
 
+class GroqProvider(BaseLLMProvider):
+    """Groq API provider - Fast inference with open-source models"""
+    
+    def __init__(self, api_key: str, model: str, max_tokens: int, temperature: float = 0.7):
+        super().__init__(api_key, model, max_tokens)
+        self.client = Groq(api_key=api_key)
+        self.temperature = temperature
+        logger.info(f"Initialized Groq provider with model: {model}")
+    
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10)
+    )
+    def generate(
+        self,
+        messages: List[Message],
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        use_cache: bool = True
+    ) -> LLMResponse:
+        """
+        Generate response with Groq API
+        
+        Groq doesn't support explicit caching, but is extremely fast
+        making repeated calls efficient.
+        """
+        # Convert messages to Groq format
+        groq_messages = []
+        
+        # Add system prompt if provided
+        if system_prompt:
+            groq_messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        
+        # Add conversation messages
+        for msg in messages:
+            groq_messages.append({
+                "role": msg.role if msg.role != "system" else "user",
+                "content": msg.content
+            })
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=groq_messages,
+                temperature=temperature,
+                max_tokens=self.max_tokens
+            )
+            
+            # Extract usage information
+            usage = {
+                "input_tokens": response.usage.prompt_tokens if response.usage else 0,
+                "output_tokens": response.usage.completion_tokens if response.usage else 0,
+                "total_tokens": response.usage.total_tokens if response.usage else 0
+            }
+            
+            cache_info = {
+                "cache_type": "none",
+                "cache_enabled": False,
+                "note": "Groq uses fast inference instead of caching"
+            }
+            
+            logger.info(
+                f"Groq response - Input: {usage['input_tokens']}, "
+                f"Output: {usage['output_tokens']}, "
+                f"Total: {usage['total_tokens']}"
+            )
+            
+            return LLMResponse(
+                content=response.choices[0].message.content or "",
+                usage=usage,
+                cache_info=cache_info,
+                model=self.model
+            )
+        
+        except Exception as e:
+            logger.error(f"Groq API error: {e}")
+            raise
+    
+    def create_cached_context(
+        self,
+        context: str,
+        cache_ttl: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Groq doesn't support caching, return basic context info
+        
+        Args:
+            context: Context text
+            cache_ttl: Not used for Groq
+            
+        Returns:
+            Context info dict
+        """
+        return {
+            "context": context,
+            "cache_supported": False,
+            "note": "Groq uses fast inference, no caching needed"
+        }
+
+
 class LLMProviderFactory:
     """Factory for creating LLM providers"""
     
@@ -336,17 +440,19 @@ class LLMProviderFactory:
         api_key: str,
         model: str,
         max_tokens: int,
-        cache_ttl: int
+        cache_ttl: int = 300,
+        temperature: float = 0.7
     ) -> BaseLLMProvider:
         """
         Create LLM provider instance
         
         Args:
-            provider_type: 'claude' or 'gemini'
+            provider_type: 'claude', 'gemini', or 'groq'
             api_key: API key for the provider
             model: Model name
             max_tokens: Maximum output tokens
-            cache_ttl: Cache time-to-live
+            cache_ttl: Cache time-to-live (not used for Groq)
+            temperature: Temperature for generation (used for Groq)
             
         Returns:
             Provider instance
@@ -355,5 +461,7 @@ class LLMProviderFactory:
             return ClaudeProvider(api_key, model, max_tokens, cache_ttl)
         elif provider_type.lower() == "gemini":
             return GeminiProvider(api_key, model, max_tokens, cache_ttl)
+        elif provider_type.lower() == "groq":
+            return GroqProvider(api_key, model, max_tokens, temperature)
         else:
             raise ValueError(f"Unknown provider type: {provider_type}")

@@ -51,6 +51,7 @@ Thumbs.db
 htmlcov/
 
 # Generated files
+inputs/
 outputs/
 temp/
 cache/

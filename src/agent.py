@@ -63,30 +63,7 @@ class AnalysisChainAgent:
             max_session_age=settings.max_session_age
         )
         
-        # Determine provider and model
-        self.provider_type = provider or settings.default_provider
-        
-        if self.provider_type == "claude":
-            self.model = model or settings.claude_model
-            api_key = settings.anthropic_api_key
-            cache_ttl = settings.claude_cache_ttl
-            max_tokens = settings.claude_max_tokens
-        else:  # gemini
-            self.model = model or settings.gemini_model
-            api_key = settings.google_api_key
-            cache_ttl = settings.gemini_cache_ttl
-            max_tokens = settings.gemini_max_tokens
-        
-        # Initialize LLM provider
-        self.llm_provider = LLMProviderFactory.create_provider(
-            provider_type=self.provider_type,
-            api_key=api_key,
-            model=self.model,
-            max_tokens=max_tokens,
-            cache_ttl=cache_ttl
-        )
-        
-        # Session management
+        # Session management - load session first to get provider info
         self.session_id = session_id
         self.session: Optional[SessionState] = None
         
@@ -96,6 +73,48 @@ class AnalysisChainAgent:
                 logger.warning(f"Session {session_id} not found, creating new session")
                 self.session_id = None
         
+        # Determine provider and model from session or parameters
+        if self.session:
+            # Use session's provider and model
+            self.provider_type = self.session.provider
+            self.model = self.session.model
+        else:
+            # Use provided parameters or defaults
+            self.provider_type = provider or settings.default_provider
+            self.model = model
+        
+        if self.provider_type == "claude":
+            self.model = self.model or settings.claude_model
+            api_key = settings.anthropic_api_key
+            cache_ttl = settings.claude_cache_ttl
+            max_tokens = settings.claude_max_tokens
+            temperature = 0.7
+        elif self.provider_type == "gemini":
+            self.model = self.model or settings.gemini_model
+            api_key = settings.google_api_key
+            cache_ttl = settings.gemini_cache_ttl
+            max_tokens = settings.gemini_max_tokens
+            temperature = 0.7
+        elif self.provider_type == "groq":
+            self.model = self.model or settings.groq_model
+            api_key = settings.groq_api_key
+            cache_ttl = 0  # Groq doesn't use caching
+            max_tokens = settings.groq_max_tokens
+            temperature = settings.groq_temperature
+        else:
+            raise ValueError(f"Unknown provider: {self.provider_type}")
+        
+        # Initialize LLM provider
+        self.llm_provider = LLMProviderFactory.create_provider(
+            provider_type=self.provider_type,
+            api_key=api_key,
+            model=self.model,
+            max_tokens=max_tokens,
+            cache_ttl=cache_ttl,
+            temperature=temperature
+        )
+        
+        # Create new session if needed
         if not self.session:
             self.session_id = self.session_manager.create_session(
                 provider=self.provider_type,
@@ -191,7 +210,7 @@ class AnalysisChainAgent:
         query: str,
         instruction: Optional[str] = None,
         use_rag: bool = True,
-        rag_chunks: int = 5,
+        rag_chunks: int = 10,
         use_cache: bool = True,
         temperature: float = 0.7
     ) -> Tuple[str, Dict[str, Any]]:

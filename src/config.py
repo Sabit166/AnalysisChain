@@ -22,9 +22,10 @@ class Settings(BaseSettings):
     # API Keys
     anthropic_api_key: str = Field(default="", description="Claude API key")
     google_api_key: str = Field(default="", description="Google Gemini API key")
+    groq_api_key: str = Field(default="", description="Groq API key")
     
     # Default Provider
-    default_provider: Literal["claude", "gemini"] = Field(
+    default_provider: Literal["claude", "gemini", "groq"] = Field(
         default="claude",
         description="Default LLM provider"
     )
@@ -44,6 +45,14 @@ class Settings(BaseSettings):
     )
     gemini_max_tokens: int = Field(default=8192, ge=1, le=2000000)
     gemini_cache_ttl: int = Field(default=3600, description="Cache TTL in seconds")
+    
+    # Groq Settings
+    groq_model: str = Field(
+        default="llama-3.3-70b-versatile",
+        description="Groq model name"
+    )
+    groq_max_tokens: int = Field(default=8192, ge=1, le=32768)
+    groq_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     
     # Vector Database Settings
     vector_db_path: Path = Field(

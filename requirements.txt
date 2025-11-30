@@ -1,6 +1,7 @@
 # Core LLM APIs
 anthropic>=0.39.0
 google-generativeai>=0.8.0
+groq>=0.9.0
 
 # Vector Database and Embeddings
 chromadb>=0.4.24
