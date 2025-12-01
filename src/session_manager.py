@@ -223,6 +223,44 @@ class SessionManager:
         
         return True
     
+    def get_metadata(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get session metadata
+        
+        Args:
+            session_id: Session ID
+            
+        Returns:
+            Metadata dictionary or None if session not found
+        """
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        
+        return session.metadata
+    
+    def update_metadata(self, session_id: str, metadata: Dict[str, Any]) -> bool:
+        """
+        Update session metadata
+        
+        Args:
+            session_id: Session ID
+            metadata: Metadata dictionary to merge with existing metadata
+            
+        Returns:
+            True if successful
+        """
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        
+        session.metadata.update(metadata)
+        session.last_accessed = datetime.now().isoformat()
+        self._save_session(session)
+        
+        logger.debug(f"Updated metadata for session {session_id}")
+        return True
+    
     def delete_session(self, session_id: str) -> bool:
         """
         Delete a session

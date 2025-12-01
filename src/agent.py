@@ -4,6 +4,7 @@ Main AnalysisChain Agent - Orchestrates all components for intelligent document 
 
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
+from datetime import datetime
 from loguru import logger
 
 from .config import settings
@@ -121,6 +122,24 @@ class AnalysisChainAgent:
                 model=self.model
             )
             self.session = self.session_manager.get_session(self.session_id)
+            
+            # Initialize metadata for new session
+            initial_metadata = {
+                "provider": self.provider_type,
+                "model": self.model,
+                "embedding_model": self.vector_store.embedding_model_name,
+                "chunk_size": settings.chunk_size,
+                "chunk_overlap": settings.chunk_overlap,
+                "total_tokens": 0,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "queries_processed": 0,
+                "documents_loaded": 0,
+                "total_chunks": 0,
+                "outputs_generated": 0,
+                "created_timestamp": datetime.now().isoformat()
+            }
+            self.session_manager.update_metadata(self.session_id, initial_metadata)
         
         logger.info(
             f"Initialized AnalysisChain Agent - Provider: {self.provider_type}, "
@@ -194,6 +213,13 @@ class AnalysisChainAgent:
             
             except Exception as e:
                 logger.error(f"Failed to load document {doc_path}: {e}")
+        
+        # Update metadata
+        current_metadata = self.session_manager.get_metadata(str(self.session_id)) or {}
+        current_metadata["documents_loaded"] = current_metadata.get("documents_loaded", 0) + len(loaded_docs)
+        current_metadata["total_chunks"] = current_metadata.get("total_chunks", 0) + total_chunks
+        current_metadata["last_document_load"] = datetime.now().isoformat()
+        self.session_manager.update_metadata(str(self.session_id), current_metadata)
         
         summary = {
             "documents_loaded": len(loaded_docs),
@@ -298,6 +324,16 @@ class AnalysisChainAgent:
             "temperature": temperature
         }
         
+        # Update session metadata with token usage
+        current_metadata = self.session_manager.get_metadata(str(self.session_id)) or {}
+        usage = response.usage or {}
+        current_metadata["queries_processed"] = current_metadata.get("queries_processed", 0) + 1
+        current_metadata["total_input_tokens"] = current_metadata.get("total_input_tokens", 0) + usage.get("input_tokens", 0)
+        current_metadata["total_output_tokens"] = current_metadata.get("total_output_tokens", 0) + usage.get("output_tokens", 0)
+        current_metadata["total_tokens"] = current_metadata.get("total_tokens", 0) + usage.get("total_tokens", 0)
+        current_metadata["last_query_timestamp"] = datetime.now().isoformat()
+        self.session_manager.update_metadata(str(self.session_id), current_metadata)
+        
         logger.info(f"Query processed successfully - Tokens: {response.usage}")
         
         return response.content, metadata
@@ -328,6 +364,12 @@ class AnalysisChainAgent:
             
             # Update session
             self.session_manager.add_generated_output(str(self.session_id), str(output_path))
+            
+            # Update metadata
+            current_metadata = self.session_manager.get_metadata(str(self.session_id)) or {}
+            current_metadata["outputs_generated"] = current_metadata.get("outputs_generated", 0) + 1
+            current_metadata["last_output_timestamp"] = datetime.now().isoformat()
+            self.session_manager.update_metadata(str(self.session_id), current_metadata)
             
             logger.info(f"Generated output file: {output_path} ({len(content)} chars)")
             return output_path
