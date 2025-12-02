@@ -55,3 +55,6 @@ inputs/
 outputs/
 temp/
 cache/
+intermediate/
+instructions/
+queries/

@@ -178,58 +178,102 @@ class AnalysisChainAgent:
     def load_source_documents(
         self,
         document_paths: List[Path],
-        add_to_vector_db: bool = True
+        add_to_vectordb: bool = True
     ) -> Dict[str, Any]:
         """
-        Load source documents and optionally add to vector database
+        Load source documents into the agent
         
         Args:
-            document_paths: List of document paths
-            add_to_vector_db: Whether to add to vector database for RAG
+            document_paths: List of document file paths
+            add_to_vectordb: Whether to add to vector database
             
         Returns:
-            Summary of loaded documents
+            Statistics about loaded documents
         """
-        total_chunks = 0
-        loaded_docs = []
+        # Get current session
+        session = self.session_manager.get_session(self.session_id)
+        if not session:
+            raise ValueError(f"Session not found: {self.session_id}")
+        
+        # Check for duplicates
+        existing_docs = set(session.source_documents)
+        new_documents = []
+        skipped_documents = []
         
         for doc_path in document_paths:
-            doc_path = Path(doc_path)
+            doc_path_str = str(doc_path)
             
+            # Check if already loaded
+            if doc_path_str in existing_docs:
+                logger.warning(f"Document already loaded, skipping: {doc_path}")
+                skipped_documents.append(doc_path_str)
+                continue
+            
+            # Verify file exists
+            if not doc_path.exists():
+                logger.error(f"Document not found: {doc_path}")
+                continue
+            
+            new_documents.append(doc_path)
+        
+        # If no new documents, return early
+        if not new_documents:
+            logger.info(f"No new documents to load. {len(skipped_documents)} already loaded.")
+            return {
+                "total_documents": len(skipped_documents),
+                "new_documents": 0,
+                "skipped_documents": len(skipped_documents),
+                "skipped_list": skipped_documents,
+                "total_chunks": 0,
+                "new_chunks": 0
+            }
+        
+        # Load only new documents - FIXED: Load each document individually
+        logger.info(f"Loading {len(new_documents)} new document(s)...")
+        
+        all_chunks = []
+        for doc_path in new_documents:
             try:
-                # Load and chunk document
-                chunks = self.document_loader.load_and_chunk(doc_path)
-                
-                if add_to_vector_db:
-                    self.rag_system.add_documents(chunks)
-                
-                total_chunks += len(chunks)
-                loaded_docs.append(str(doc_path))
-                
-                # Update session
-                self.session_manager.add_source_document(str(self.session_id), str(doc_path))
-                
-                logger.info(f"Loaded document: {doc_path} ({len(chunks)} chunks)")
-            
+                # Load and chunk single document
+                doc_chunks = self.document_loader.load_and_chunk(doc_path)
+                all_chunks.extend(doc_chunks)
+                logger.info(f"Loaded {len(doc_chunks)} chunks from {doc_path.name}")
             except Exception as e:
-                logger.error(f"Failed to load document {doc_path}: {e}")
+                logger.error(f"Failed to load {doc_path}: {e}")
+                continue
+        
+        # Add to vector database
+        total_chunks = len(all_chunks)
+        if add_to_vectordb and self.rag_system and total_chunks > 0:
+            self.rag_system.add_documents(all_chunks)
+            logger.info(f"Added {total_chunks} chunks to vector database")
+        
+        # Update session
+        for doc_path in new_documents:
+            self.session_manager.add_source_document(self.session_id, str(doc_path))
         
         # Update metadata
-        current_metadata = self.session_manager.get_metadata(str(self.session_id)) or {}
-        current_metadata["documents_loaded"] = current_metadata.get("documents_loaded", 0) + len(loaded_docs)
+        current_metadata = self.session_manager.get_metadata(self.session_id) or {}
+        current_metadata["documents_loaded"] = current_metadata.get("documents_loaded", 0) + len(new_documents)
         current_metadata["total_chunks"] = current_metadata.get("total_chunks", 0) + total_chunks
         current_metadata["last_document_load"] = datetime.now().isoformat()
-        self.session_manager.update_metadata(str(self.session_id), current_metadata)
+        self.session_manager.update_metadata(self.session_id, current_metadata)
         
-        summary = {
-            "documents_loaded": len(loaded_docs),
+        stats = {
+            "total_documents": len(new_documents) + len(skipped_documents),
+            "new_documents": len(new_documents),
+            "skipped_documents": len(skipped_documents),
+            "skipped_list": skipped_documents,
             "total_chunks": total_chunks,
-            "documents": loaded_docs,
-            "vector_db_enabled": add_to_vector_db
+            "new_chunks": total_chunks
         }
         
-        logger.info(f"Document loading complete: {summary}")
-        return summary
+        logger.info(
+            f"Document loading complete - "
+            f"New: {len(new_documents)}, Skipped: {len(skipped_documents)}, Chunks: {total_chunks}"
+        )
+        
+        return stats
     
     def process_query(
         self,

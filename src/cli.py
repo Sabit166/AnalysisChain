@@ -80,14 +80,15 @@ def load_documents(session_id: str, document_paths: tuple, no_vector_db: bool):
         
         summary = agent.load_source_documents(
             document_paths=[Path(p) for p in document_paths],
-            add_to_vector_db=not no_vector_db
+            add_to_vectordb=not no_vector_db
         )
         
         console.print(Panel(
             f"[bold green]Documents loaded successfully![/bold green]\n\n"
-            f"Documents: [cyan]{summary['documents_loaded']}[/cyan]\n"
+            f"New documents: [cyan]{summary['new_documents']}[/cyan]\n"
+            f"Skipped (already loaded): [cyan]{summary['skipped_documents']}[/cyan]\n"
             f"Total chunks: [cyan]{summary['total_chunks']}[/cyan]\n"
-            f"Vector DB: [cyan]{'Enabled' if summary['vector_db_enabled'] else 'Disabled'}[/cyan]",
+            f"Vector DB: [cyan]{'Enabled' if not no_vector_db else 'Disabled'}[/cyan]",
             title="Load Complete"
         ))
     
@@ -333,6 +334,170 @@ def cleanup():
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         sys.exit(1)
+
+
+@cli.command()
+@click.option('--confirm', is_flag=True, help='Skip confirmation prompt')
+def clear_vectordb(confirm: bool):
+    """Clear the vector database (removes all document embeddings)"""
+    try:
+        import shutil
+        from .config import settings
+        
+        vectordb_path = Path(settings.vector_db_path)
+        
+        if not vectordb_path.exists():
+            console.print("[yellow]Vector database is already empty[/yellow]")
+            return
+        
+        # Confirmation
+        if not confirm:
+            console.print(f"\n[bold red]⚠️  WARNING[/bold red]")
+            console.print(f"This will delete all document embeddings in: [cyan]{vectordb_path}[/cyan]")
+            console.print("\nThis action cannot be undone!\n")
+            
+            if not click.confirm("Are you sure you want to continue?"):
+                console.print("[yellow]Operation cancelled[/yellow]")
+                return
+        
+        # Delete vector database
+        shutil.rmtree(vectordb_path)
+        console.print(f"\n[green]✓[/green] Vector database cleared successfully")
+        console.print(f"[dim]Deleted: {vectordb_path}[/dim]\n")
+        
+        logger.info("Vector database cleared")
+        
+    except Exception as e:
+        logger.error(f"Failed to clear vector database: {e}")
+        console.print(f"[red]Error:[/red] {e}")
+        raise click.Abort()
+
+
+@cli.command()
+@click.option('--all', 'clear_all', is_flag=True, help='Clear all sessions')
+@click.option('--session-id', help='Clear specific session')
+@click.option('--confirm', is_flag=True, help='Skip confirmation prompt')
+def clear_sessions(clear_all: bool, session_id: Optional[str], confirm: bool):
+    """Clear session data"""
+    try:
+        from .session_manager import SessionManager
+        from .config import settings
+        
+        session_manager = SessionManager(storage_path=Path(settings.session_storage_path))
+        
+        # Validate options
+        if not clear_all and not session_id:
+            console.print("[red]Error:[/red] Must specify --all or --session-id")
+            raise click.Abort()
+        
+        if clear_all and session_id:
+            console.print("[red]Error:[/red] Cannot use both --all and --session-id")
+            raise click.Abort()
+        
+        # Clear specific session
+        if session_id:
+            session = session_manager.get_session(session_id)
+            if not session:
+                console.print(f"[red]Error:[/red] Session not found: {session_id}")
+                raise click.Abort()
+            
+            # Confirmation
+            if not confirm:
+                console.print(f"\n[bold yellow]⚠️  WARNING[/bold yellow]")
+                console.print(f"This will delete session: [cyan]{session_id}[/cyan]")
+                console.print(f"Created: {session.created_at}")
+                console.print(f"Messages: {len(session.message_history)}")
+                console.print("\nThis action cannot be undone!\n")
+                
+                if not click.confirm("Are you sure you want to continue?"):
+                    console.print("[yellow]Operation cancelled[/yellow]")
+                    return
+            
+            # Delete session
+            session_manager.delete_session(session_id)
+            console.print(f"\n[green]✓[/green] Session deleted: {session_id}\n")
+            logger.info(f"Deleted session: {session_id}")
+        
+        # Clear all sessions
+        elif clear_all:
+            sessions = session_manager.list_sessions()
+            
+            if not sessions:
+                console.print("[yellow]No sessions to clear[/yellow]")
+                return
+            
+            # Confirmation
+            if not confirm:
+                console.print(f"\n[bold red]⚠️  WARNING[/bold red]")
+                console.print(f"This will delete [red]ALL {len(sessions)} sessions[/red]")
+                console.print("\nThis action cannot be undone!\n")
+                
+                if not click.confirm("Are you sure you want to continue?"):
+                    console.print("[yellow]Operation cancelled[/yellow]")
+                    return
+            
+            # Delete all sessions
+            deleted = 0
+            for session_info in sessions:
+                if session_manager.delete_session(session_info['session_id']):
+                    deleted += 1
+            
+            console.print(f"\n[green]✓[/green] Deleted {deleted} session(s)\n")
+            logger.info(f"Deleted all sessions: {deleted}")
+    
+    except Exception as e:
+        logger.error(f"Failed to clear sessions: {e}")
+        console.print(f"[red]Error:[/red] {e}")
+        raise click.Abort()
+
+
+@cli.command()
+@click.option('--confirm', is_flag=True, help='Skip confirmation prompt')
+def clear_all(confirm: bool):
+    """Clear everything (vector database + all sessions)"""
+    try:
+        import shutil
+        from .session_manager import SessionManager
+        from .config import settings
+        
+        vectordb_path = Path(settings.vector_db_path)
+        session_manager = SessionManager(storage_path=Path(settings.session_storage_path))
+        sessions = session_manager.list_sessions()
+        
+        # Confirmation
+        if not confirm:
+            console.print(f"\n[bold red]🚨 DANGER ZONE 🚨[/bold red]")
+            console.print("\nThis will delete:")
+            console.print(f"  • Vector database: [cyan]{vectordb_path}[/cyan]")
+            console.print(f"  • All {len(sessions)} sessions")
+            console.print(f"  • All conversation history")
+            console.print(f"  • All metadata")
+            console.print("\n[bold red]This action cannot be undone![/bold red]\n")
+            
+            if not click.confirm("Are you ABSOLUTELY sure?"):
+                console.print("[yellow]Operation cancelled[/yellow]")
+                return
+        
+        # Clear vector database
+        if vectordb_path.exists():
+            shutil.rmtree(vectordb_path)
+            console.print("[green]✓[/green] Vector database cleared")
+        
+        # Clear all sessions
+        deleted = 0
+        for session_info in sessions:
+            if session_manager.delete_session(session_info['session_id']):
+                deleted += 1
+        
+        console.print(f"[green]✓[/green] Deleted {deleted} session(s)")
+        console.print(f"\n[bold green]All data cleared successfully![/bold green]\n")
+        
+        logger.info("Cleared all data (vector database + sessions)")
+        
+    except Exception as e:
+        logger.error(f"Failed to clear all data: {e}")
+        console.print(f"[red]Error:[/red] {e}")
+        raise click.Abort()
 
 
 if __name__ == '__main__':

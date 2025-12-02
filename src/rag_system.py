@@ -63,7 +63,7 @@ class VectorStore:
             }
             for chunk in chunks
         ]
-        ids = [f"{chunks[0].source_file}_{chunk.chunk_id}" for chunk in chunks]
+        ids = [f"{chunk.source_file}_{chunk.chunk_id}" for chunk in chunks]
         
         # Generate embeddings
         logger.info(f"Generating embeddings for {len(documents)} chunks")
