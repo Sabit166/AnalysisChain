@@ -1,0 +1,309 @@
+================================================================================
+AnalysisChain CLI Commands Reference
+================================================================================
+AI Agent with Intelligent Caching and Context Management
+Efficiently process large documents with follow-up operations while minimizing token costs.
+
+================================================================================
+GLOBAL OPTIONS
+================================================================================
+python -m src --version       Show the version and exit
+python -m src --help          Show this message and exit
+
+
+================================================================================
+SESSION MANAGEMENT COMMANDS
+================================================================================
+
+1. CREATE NEW SESSION
+--------------------------------------------------------------------------------
+python -m src new-session [OPTIONS]
+
+Description:
+  Create a new session for document analysis
+
+Options:
+  --provider [claude|gemini|groq]    LLM provider (defaults to config)
+  --model TEXT                       Model name (defaults to config)
+  --help                             Show this message and exit
+
+Examples:
+  python -m src new-session
+  python -m src new-session --provider groq
+  python -m src new-session --provider claude --model claude-3-5-sonnet-20241022
+  python -m src new-session --provider gemini --model gemini-2.0-flash-exp
+
+
+2. SHOW SESSION INFORMATION
+--------------------------------------------------------------------------------
+python -m src info [SESSION_ID]
+
+Description:
+  Show detailed session information including statistics, documents loaded,
+  token usage, and message count
+
+Options:
+  --help                             Show this message and exit
+
+Examples:
+  python -m src info                                    # Show all sessions
+  python -m src info 9cc396c4-659f-47e9-931a-c0f4908c6261
+
+
+3. DELETE SESSION
+--------------------------------------------------------------------------------
+python -m src delete-session [OPTIONS] SESSION_ID
+
+Description:
+  Delete a specific session
+
+Options:
+  --yes                              Confirm the action without prompting
+  --help                             Show this message and exit
+
+Examples:
+  python -m src delete-session 9cc396c4-659f-47e9-931a-c0f4908c6261
+  python -m src delete-session 9cc396c4-659f-47e9-931a-c0f4908c6261 --yes
+
+
+4. CLEANUP EXPIRED SESSIONS
+--------------------------------------------------------------------------------
+python -m src cleanup
+
+Description:
+  Clean up expired sessions based on max_session_age configuration
+
+Options:
+  --help                             Show this message and exit
+
+Examples:
+  python -m src cleanup
+
+
+================================================================================
+DOCUMENT MANAGEMENT COMMANDS
+================================================================================
+
+5. LOAD DOCUMENTS
+--------------------------------------------------------------------------------
+python -m src load-documents [OPTIONS] SESSION_ID DOCUMENT_PATHS...
+
+Description:
+  Load source documents into a session and add to vector database for RAG
+
+Options:
+  --no-vector-db                     Skip adding to vector database
+  --help                             Show this message and exit
+
+Examples:
+  python -m src load-documents <SESSION_ID> inputs/document.pdf
+  python -m src load-documents <SESSION_ID> inputs/doc1.pdf inputs/doc2.txt
+  python -m src load-documents <SESSION_ID> outputs/*.txt
+  python -m src load-documents <SESSION_ID> document.pdf --no-vector-db
+
+
+================================================================================
+QUERY PROCESSING COMMANDS
+================================================================================
+
+6. SINGLE QUERY
+--------------------------------------------------------------------------------
+python -m src query [OPTIONS] SESSION_ID QUERY
+
+Description:
+  Process a single query in a session with RAG context retrieval
+
+Options:
+  --instruction PATH                 Instruction file path
+  --no-rag                           Disable RAG context retrieval
+  --no-cache                         Disable caching
+  --chunks INTEGER                   Number of RAG chunks to retrieve (default: 5)
+  --temperature FLOAT                LLM temperature (0.0 - 1.0, default: 0.7)
+  --output PATH                      Save response to file
+  --help                             Show this message and exit
+
+Examples:
+  python -m src query <SESSION_ID> "What are the main components of an OS?"
+  python -m src query <SESSION_ID> "Explain memory management" --output response.txt
+  python -m src query <SESSION_ID> "Summarize the document" --instruction instructions/analysis.txt
+  python -m src query <SESSION_ID> "What is..." --chunks 10 --temperature 0.5
+  python -m src query <SESSION_ID> "Quick question" --no-rag --no-cache
+
+
+7. BATCH QUERY
+--------------------------------------------------------------------------------
+python -m src batch-query [OPTIONS] SESSION_ID QUERIES_FILE
+
+Description:
+  Process multiple queries from a file (one query per line, supports --- separator)
+
+Options:
+  --instruction PATH                 Instruction file path
+  --output-dir PATH                  Directory for saving outputs
+  --help                             Show this message and exit
+
+Examples:
+  python -m src batch-query <SESSION_ID> queries/batch_queries.txt
+  python -m src batch-query <SESSION_ID> queries/questions.txt --output-dir outputs/
+  python -m src batch-query <SESSION_ID> queries/analysis.txt --instruction instructions/analysis.txt --output-dir results/
+
+
+================================================================================
+DATABASE MANAGEMENT COMMANDS
+================================================================================
+
+8. CLEAR VECTOR DATABASE
+--------------------------------------------------------------------------------
+python -m src clear-vectordb [OPTIONS]
+
+Description:
+  Clear the vector database (removes all document embeddings)
+
+Options:
+  --confirm                          Skip confirmation prompt
+  --help                             Show this message and exit
+
+Examples:
+  python -m src clear-vectordb
+  python -m src clear-vectordb --confirm
+
+
+9. CLEAR SESSIONS
+--------------------------------------------------------------------------------
+python -m src clear-sessions [OPTIONS]
+
+Description:
+  Clear session data (can clear all or specific session)
+
+Options:
+  --all                              Clear all sessions
+  --session-id TEXT                  Clear specific session
+  --confirm                          Skip confirmation prompt
+  --help                             Show this message and exit
+
+Examples:
+  python -m src clear-sessions --all
+  python -m src clear-sessions --all --confirm
+  python -m src clear-sessions --session-id 9cc396c4-659f-47e9-931a-c0f4908c6261
+
+
+10. CLEAR ALL DATA
+--------------------------------------------------------------------------------
+python -m src clear-all [OPTIONS]
+
+Description:
+  Clear everything (vector database + all sessions)
+
+Options:
+  --confirm                          Skip confirmation prompt
+  --help                             Show this message and exit
+
+Examples:
+  python -m src clear-all
+  python -m src clear-all --confirm
+
+
+================================================================================
+TYPICAL WORKFLOW EXAMPLE
+================================================================================
+
+# 1. Create a new session
+python -m src new-session --provider groq
+# Output: Session ID: abc123...
+
+# 2. Load documents
+python -m src load-documents abc123 inputs/document.pdf
+
+# 3. Process single query
+python -m src query abc123 "What is this document about?" --output outputs/summary.txt
+
+# 4. Process batch queries
+python -m src batch-query abc123 queries/questions.txt --output-dir outputs/
+
+# 5. Load previous outputs back for synthesis
+python -m src load-documents abc123 outputs/output_1.txt outputs/output_2.txt
+
+# 6. Final comprehensive query
+python -m src query abc123 "Synthesize all analyses" --output outputs/final.txt
+
+# 7. Check session statistics
+python -m src info abc123
+
+
+================================================================================
+CONFIGURATION FILES
+================================================================================
+
+Required files:
+  .env                               API keys and configuration
+  config.py                          Application settings
+  
+Optional files:
+  instructions/analysis_instruction.txt    System prompts for AI
+  queries/batch_queries.txt               Multiple queries for batch processing
+
+
+================================================================================
+SUPPORTED PROVIDERS
+================================================================================
+
+Claude (Anthropic):
+  - Models: claude-3-5-sonnet-20241022, claude-3-opus-20240229
+  - Supports: Prompt caching
+  
+Gemini (Google):
+  - Models: gemini-2.0-flash-exp, gemini-1.5-pro
+  - Supports: Context caching
+  
+Groq:
+  - Models: llama-3.3-70b-versatile, llama-3.1-70b-versatile
+  - Supports: Fast inference (no caching)
+
+
+================================================================================
+SUPPORTED DOCUMENT FORMATS
+================================================================================
+
+  - PDF (.pdf)        Extracted using pdfplumber or PyPDF2
+  - Text (.txt)       Plain text files
+  - Word (.docx)      Microsoft Word documents
+
+
+================================================================================
+NOTES
+================================================================================
+
+1. Always activate virtual environment first:
+   .\env\Scripts\Activate.ps1     (PowerShell)
+   source env/bin/activate        (Linux/Mac)
+
+2. Session IDs are UUIDs generated automatically
+
+3. RAG retrieves relevant context from vector database before querying
+
+4. Conversation history is limited to last 10 messages to control token usage
+
+5. Duplicate documents are automatically skipped during loading
+
+6. Chunk IDs are generated as: <filename>_<chunk_number>
+
+7. All commands require proper API keys in .env file
+
+
+================================================================================
+ERROR HANDLING
+================================================================================
+
+If you encounter errors:
+
+1. Check virtual environment is activated
+2. Verify API keys are set in .env file
+3. Ensure required files/paths exist
+4. Check session ID is valid: python -m src info <SESSION_ID>
+5. Clear corrupted data: python -m src clear-all --confirm
+
+
+================================================================================
+For more information, visit the project documentation or run:
+python -m src <command> --help
+================================================================================
